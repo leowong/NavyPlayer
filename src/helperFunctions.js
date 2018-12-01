@@ -1,5 +1,5 @@
 import store from 'store'
-import { changeTrackAction, prevTrackAction, changeArtistPlaylistAction } from 'actions/index.js'
+import * as actions from 'actions'
 import fetchJsonp from 'fetch-jsonp'
 const { DZ } = window
 
@@ -37,14 +37,14 @@ export function random (props) {
 }
 
 export function randomArtistTrack ({ artist: { id }, track, artistPlaylist }, artistID = null) {
-  store.dispatch(prevTrackAction(track))
+  store.dispatch(actions.prevTrackAction(track))
   // eslint-disable-next-line
     if ((artistID && artistID != id) || (id && !artistID)) {
     fetchArtistData(artistID || id)
   } else {
     const newTrack = randomNumber(artistPlaylist)
-    store.dispatch(changeTrackAction(newTrack))
-    DZ.player.playTracks([newTrack.id])
+    store.dispatch(actions.changeTrackAction(newTrack))
+    DZ && DZ.player.playTracks([newTrack.id])
   }
 }
 
@@ -52,18 +52,18 @@ function fetchArtistData (id) {
   fetchJsonp(`https://api.deezer.com/artist/${id}/top?limit=100&output=jsonp`)
     .then(resp => resp.json())
     .then(({ data }) => {
-      store.dispatch(changeArtistPlaylistAction(data))
+      store.dispatch(actions.changeArtistPlaylistAction(data))
       const newTrack = randomNumber(data)
-      store.dispatch(changeTrackAction(newTrack))
+      store.dispatch(actions.changeTrackAction(newTrack))
       searchArtistInfo(newTrack)
-      DZ.player.playTracks([newTrack.id])
+      DZ && DZ.player.playTracks([newTrack.id])
     })
 }
 
 export function randomFlowTrack (props) {
   const { flow, track } = props
-  store.dispatch(prevTrackAction(track))
-  store.dispatch(changeTrackAction(randomNumber(flow)))
+  store.dispatch(actions.prevTrackAction(track))
+  store.dispatch(actions.changeTrackAction(randomNumber(flow)))
   searchArtistInfo(store.getState().track)
 }
 
@@ -75,17 +75,17 @@ function fetchAlbumData (id) {
       cover_xl: coverXl, 
       cover_medium: coverMedium 
     }) => dispatch(
-      changeTrackAction(randomNumber(data), coverXl, coverMedium)
+      actions.changeTrackAction(randomNumber(data), coverXl, coverMedium)
     ))
 }
 
 export function randomAlbumTrack (props, albumID = null) {
   const { album, track } = props
-  store.dispatch(prevTrackAction(track))
+  store.dispatch(actions.prevTrackAction(track))
   store.dispatch(fetchAlbumData(albumID || album.id))
     .then(({ track }) => {
       searchArtistInfo(track)
-      DZ.player.playTracks([track.id])
+      DZ && DZ.player.playTracks([track.id])
     })
 }
 
@@ -94,14 +94,14 @@ function fetchData (chosenPlaylist) {
     .then(response => response.json())
     .then(({ tracks }) => {
       if (tracks) {
-        return dispatch(changeTrackAction(randomNumber(tracks.data)))
+        return dispatch(actions.changeTrackAction(randomNumber(tracks.data)))
       }
     })
 }
 
-export function randomPlaylistTrack (props, playlistID = null) {
+function randomPlaylistTrack (props, playlistID = null) {
   const { chosenPlaylist, track } = props
-  store.dispatch(prevTrackAction(track))
+  store.dispatch(actions.prevTrackAction(track))
   store.dispatch(fetchData(playlistID || chosenPlaylist))
     .then(resp => resp && searchArtistInfo(resp.track))
 }
@@ -121,6 +121,15 @@ function searchTopTracks (id) {
     .then(({ data }) => store.dispatch({
       type: 'FIND_TOP_TRACKS',
       topTracks: data || null
+    }))
+}
+
+function searchArtistPlaylists (id) {
+  return fetchJsonp(`https://api.deezer.com/artist/${id}/playlists?output=jsonp`)
+    .then(response => response.json())
+    .then(({ data }) => store.dispatch({
+      type: 'FIND_ARTIST_PLAYLISTS',
+      artistPlaylists: data || null
     }))
 }
 
@@ -145,15 +154,26 @@ function searchSimilarArtists (id) {
 export function searchArtistInfo (track) {
   searchArtist(track.artist.id)
   searchTopTracks(track.artist.id)
+  searchArtistPlaylists(track.artist.id)
   searchAlbums(track.artist.id)
   searchSimilarArtists(track.artist.id)
-  DZ.ready(() => DZ.player.playTracks([track.id]))
+  DZ && DZ.ready(() => DZ && DZ.player.playTracks([track.id]))
+}
+
+export function choosePlaylist(id, props) {
+  store.dispatch(actions.changePlaylistAction(id))
+  randomPlaylistTrack({ 
+      ...props, 
+      chosenPlaylist: id
+  })
+  store.dispatch(actions.changeAlbumAction(0))
+  store.dispatch(actions.changeArtistPlaylistAction([]))
 }
 
 export function login () {
-  DZ.login(({ authResponse }) => {
+  DZ && DZ.login(({ authResponse }) => {
     if (authResponse.accessToken) {
-      DZ.api('/user/me', response => {
+      DZ && DZ.api('/user/me', response => {
         if (response.id) {
           let login = document.querySelector('.login')
           login.style.display = 'none'
@@ -169,6 +189,7 @@ export function login () {
                     data
                   })
                   login.style.display = 'block'
+                  login.textContent = 'FLOW'
                 }
               }
             })
